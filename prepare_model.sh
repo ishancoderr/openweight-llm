@@ -34,6 +34,7 @@ echo "Adapter was trained on : $ADAPTER_BASE"
 echo "Converting against     : $BASE_HF_ID"
 if [ "$ADAPTER_BASE" != "$BASE_HF_ID" ]; then
     # A 4-bit re-upload of the same model (e.g. unsloth/qwen3-8b-bnb-4bit) is fine; another model is not.
+    # (Loading Qwen/Qwen3-8B in 4-bit with bitsandbytes, as notebook 02 does, still records Qwen/Qwen3-8B.)
     echo "WARNING: these differ. Continue only if the adapter's base is a variant of $BASE_HF_ID."
 fi
 

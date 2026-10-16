@@ -41,7 +41,6 @@ def load_model(name: str, lora_file: str | None) -> LoadedModel:
         n_gpu_layers=GPU_LAYERS,
         n_threads=THREADS,
         n_ctx=CTX_SIZE,
-        chat_format="chatml",
     )
     return LoadedModel(name=name, llm=llm, lock=threading.Lock())
 
@@ -55,11 +54,16 @@ def load_models() -> dict[str, LoadedModel]:
     }
 
 
-def add_no_think(messages: list[dict]) -> list[dict]:
-    """Return a copy of the messages with Qwen3's " /no_think" switch appended to the last one."""
-    prompt_messages = [dict(message) for message in messages]
-    prompt_messages[-1]["content"] += " /no_think"
-    return prompt_messages
+def build_prompt(messages: list[dict]) -> str:
+    """Return the Qwen3 prompt the notebooks used: apply_chat_template(messages, add_generation_prompt=True,
+    enable_thinking=False), so the adapter sees exactly the prompt format it was trained on."""
+    # Same text as Qwen3's template for system/user/assistant turns (no tools, no <think> in past answers).
+    prompt = "".join(f"<|im_start|>{message['role']}\n{message['content']}<|im_end|>\n" for message in messages)
+    prompt += "<|im_start|>assistant\n"
+    if DISABLE_THINKING:
+        # enable_thinking=False pre-fills an empty thinking block, so the model answers straight away.
+        prompt += "<think>\n\n</think>\n\n"
+    return prompt
 
 
 def strip_think(content: str) -> str:
@@ -69,21 +73,20 @@ def strip_think(content: str) -> str:
 
 def generate(model: LoadedModel, messages: list[dict], max_tokens: int, temperature: float) -> dict:
     """Return the answer text, prompt/completion/total token counts and generation time in ms."""
-    prompt_messages = add_no_think(messages) if DISABLE_THINKING else messages
+    prompt = build_prompt(messages)
 
     # Timed inside the lock, so time spent queueing behind another request is not counted.
     with model.lock:
         started = time.perf_counter()
-        completion = model.llm.create_chat_completion(
-            messages=prompt_messages,
+        completion = model.llm.create_completion(
+            prompt=prompt,
             max_tokens=max_tokens,
             temperature=temperature,
+            stop=["<|im_end|>"],
         )
         latency_ms = int((time.perf_counter() - started) * 1000)
 
-    content = completion["choices"][0]["message"]["content"] or ""
-    if DISABLE_THINKING:
-        content = strip_think(content)
+    content = strip_think(completion["choices"][0]["text"])
     usage = completion["usage"]
     return {
         "content": content,

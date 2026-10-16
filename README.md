@@ -66,8 +66,9 @@ Response (`latency_ms` = generation time on the server, without time spent waiti
 - Each instance has its own `threading.Lock`, because a `Llama` object can't run two generations at
   once. Route handlers are plain `def`, so FastAPI runs them in its thread pool and the event loop
   stays free while the GPU works.
-- With `DISABLE_THINKING=true`, `" /no_think"` is appended to the last message and any
-  `<think>...</think>` block is removed from the answer, so the parser receives clean JSON.
+- The prompt is built exactly like in the training notebooks: Qwen3's chat template with
+  `enable_thinking=False` (`DISABLE_THINKING=true`), which pre-fills an empty `<think>` block.
+  Any `<think>...</think>` block is also removed from the answer, so the parser receives clean JSON.
 
 GPU memory (approximate, `CTX_SIZE=4096`):
 
@@ -156,8 +157,9 @@ exit
 ssh -i key.pem ubuntu@<ec2-ip>
 cd openweight-llm
 
-# 4. On your laptop: copy the PEFT adapter folder to the instance
-scp -i key.pem -r ./adapter ubuntu@<ec2-ip>:~/openweight-llm/adapter
+# 4. On your laptop: copy the PEFT adapter folder to the instance. This is the folder notebook 02
+#    saved to MyDrive/kqml_finetune/adapters/qwen3-8b-v3/, downloaded into openweight-llm/adapter/
+scp -i key.pem -r ./adapter ubuntu@<ec2-ip>:~/openweight-llm/
 
 # 5. On EC2: download the base GGUF (~5 GB) and convert the adapter to models/adapter.gguf
 ./prepare_model.sh
@@ -257,14 +259,18 @@ scp -i key.pem -r ./adapter ubuntu@<ec2-ip>:~/openweight-llm/   # from your lapt
   long (300 s in `llm_client.py`).
 - **Out of GPU memory** at startup (`Failed to load model` in the logs): lower `CTX_SIZE` in `.env`
   (e.g. 2048; the longest training example was 1,830 tokens) and `docker compose restart`.
-- **4-bit quantization (thesis limitation).** Both configurations run on the Q4_K_M GGUF quantization
-  of Qwen3-8B, not on 16-bit weights. The adapter was trained with QLoRA against bitsandbytes NF4
-  weights, but is applied here on top of llama.cpp's Q4_K_M weights, so the quantization error the
-  adapter saw during training is not exactly the one it sees in serving. Scores may therefore differ
-  slightly from evaluations in the training notebooks, and GPT-4o mini is compared against a 4-bit
-  open-weight model.
-- **Prompt format.** The server uses llama-cpp's `chatml` format plus the `/no_think` switch; training
-  used Qwen3's own chat template with `enable_thinking=False`. Both produce `<|im_start|>`-style
-  prompts with thinking off, but they are not byte-identical.
+- **4-bit quantization (thesis limitation).** Training (notebook 02) and the notebook evaluations
+  (01, 03) loaded `Qwen/Qwen3-8B` in 4-bit **NF4** with bitsandbytes. The server runs the same model
+  in 4-bit too, but as llama.cpp's **Q4_K_M** GGUF. The LoRA matrices themselves are not quantized
+  (they are saved in 32-bit and converted to 16-bit), so the adapter works on any version of
+  Qwen3-8B. But the rounding error of the base weights it was trained against (NF4) is not exactly
+  the one it meets in serving (Q4_K_M). Scores from the server may therefore differ slightly from
+  the notebook scores, and GPT-4o mini is compared against a 4-bit open-weight model.
+- **Prompt format = training format.** `build_prompt()` in `app/llm.py` writes the same text as the
+  notebooks' `apply_chat_template(..., add_generation_prompt=True, enable_thinking=False)`, including
+  the pre-filled empty `<think>\n\n</think>\n\n`, so base and fine-tuned model get exactly the prompt
+  they were evaluated and trained with. Greedy decoding (`temperature: 0.0`) also matches the
+  notebooks. One difference: the notebooks' `clean()` also removes a surrounding ```` ``` ```` code
+  fence from the answer; the server does not, so `parse_query()` should strip one if present.
 - **HTTP only.** The API key travels unencrypted. Limit port 80 in the security group to the agents'
   IP addresses.
