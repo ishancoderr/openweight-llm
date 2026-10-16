@@ -84,23 +84,48 @@ GPU memory (approximate, `CTX_SIZE=4096`):
 
 ```
 openweight-llm/
-├── app/
+├── app/                       the service (the only code that goes into the Docker image)
 │   ├── __init__.py
-│   ├── main.py            FastAPI app, request/response models, routes, API key check
-│   └── llm.py             load_models() and generate()
+│   ├── main.py                FastAPI app, request/response models, routes, API key check
+│   └── llm.py                 load_models(), build_prompt(), generate()
 ├── agent_side/
-│   └── llm_client.py      call_llm() to copy into Agent-001/Agent-002 pipeline/
-├── adapter/               your PEFT adapter (git-ignored): adapter_config.json + adapter_model.safetensors
-├── models/                created by prepare_model.sh (git-ignored)
+│   └── llm_client.py          call_llm() to copy into Agent-001/Agent-002 pipeline/
+├── tests/                     pytest, runs without a GPU
+│   ├── fake_llama_cpp/        stand-in for the CUDA llama_cpp package
+│   ├── qwen3_chat_template.jinja   Qwen3 chat template saved by notebook 02, to check build_prompt()
+│   ├── conftest.py            test settings + TestClient fixture
+│   ├── test_api.py            routes, auth, validation, prompt format
+│   └── test_llm_client.py     call_llm() for all three providers
+├── .github/workflows/ci.yml   on every push: tests, shell script syntax, compose file check
+├── adapter/                   your PEFT adapter (git-ignored): adapter_config.json + adapter_model.safetensors
+├── models/                    created by prepare_model.sh on EC2 (git-ignored)
 │   ├── Qwen3-8B-Q4_K_M.gguf
 │   └── adapter.gguf
-├── Dockerfile             CUDA 12.4 devel image + CUDA build of llama-cpp-python
-├── docker-compose.yml     port 80 → 8000, ./models:/models:ro, GPU reservation, healthcheck
-├── requirements.txt
-├── .env.example           every setting, with comments
-├── setup_ec2.sh           once per instance: Docker + NVIDIA container toolkit
-└── prepare_model.sh       once per adapter: download base GGUF, convert adapter to GGUF
+├── Dockerfile                 CUDA 12.4 devel image + CUDA build of llama-cpp-python, non-root user
+├── docker-compose.yml         port 80 → 8000, ./models:/models:ro, GPU reservation, healthcheck
+├── requirements.txt           server dependencies (pinned)
+├── requirements-dev.txt       test dependencies (pinned)
+├── pytest.ini
+├── .env.example               every setting, with comments
+├── setup_ec2.sh               once per instance: Docker + NVIDIA container toolkit
+└── prepare_model.sh           once per adapter: download base GGUF, convert adapter to GGUF
 ```
+
+## Running the tests
+
+The tests replace `llama_cpp` with a small fake (`tests/fake_llama_cpp`), so they run on a laptop
+without a GPU or a llama.cpp build. GitHub Actions runs them on every push (`.github/workflows/ci.yml`).
+
+```bash
+python -m venv venv
+venv\Scripts\activate            # Windows; on Linux/Mac: source venv/bin/activate
+pip install -r requirements-dev.txt
+pytest -v
+```
+
+They check both endpoints with and without a trailing slash, 401 for a missing or wrong key, 422 for
+an invalid body, 400 for a prompt that is too long, `/health`, `call_llm()` for all three providers,
+and that `build_prompt()` gives exactly the same text as the Qwen3 chat template used in training.
 
 ## Cost
 

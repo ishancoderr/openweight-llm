@@ -21,6 +21,10 @@ RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/lib
 
 COPY app ./app
 
+# Run as a normal user, not root; the GPU and the read-only /models mount don't need root.
+RUN useradd --create-home --uid 1000 llm
+USER llm
+
 EXPOSE 8000
 
 # One worker only: every worker would load its own two copies of the model.

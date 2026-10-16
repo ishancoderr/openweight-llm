@@ -4,3 +4,5 @@ adapter/
 __pycache__/
 venv/
 .git
+tests/
+.github/

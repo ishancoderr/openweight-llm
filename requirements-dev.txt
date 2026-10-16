@@ -1,0 +1,5 @@
+# For running the tests locally or in CI (no GPU, no llama-cpp-python build needed).
+fastapi==0.142.2  # same version as requirements.txt
+httpx==0.28.1
+jinja2==3.1.6
+pytest==9.1.1

@@ -1,2 +1,4 @@
 # Shell scripts run on Linux: keep LF line endings even in a Windows checkout
 *.sh text eol=lf
+# The chat template fixture must stay byte-identical to the one used in training
+*.jinja text eol=lf
