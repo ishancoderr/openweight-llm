@@ -1,0 +1,4 @@
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
+# Built from source with CUDA in the Dockerfile (CMAKE_ARGS); bundles llama.cpp tag b11312.
+llama-cpp-python==0.3.36

@@ -1,0 +1,24 @@
+services:
+  openweight-llm:
+    build: .
+    image: openweight-llm:latest
+    container_name: openweight-llm
+    ports:
+      - "80:8000"
+    volumes:
+      - ./models:/models:ro
+    env_file: .env
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # both models are loaded onto the GPU before the server answers

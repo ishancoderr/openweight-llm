@@ -1,3 +1,10 @@
+# openweight-llm: model files, the private adapter and secrets stay out of git
+models/
+adapter/
+.env
+__pycache__/
+venv/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

@@ -1,0 +1,6 @@
+models/
+adapter/
+.env
+__pycache__/
+venv/
+.git
