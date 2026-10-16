@@ -5,14 +5,13 @@ Docker container on a single AWS EC2 **g4dn.xlarge** (1× NVIDIA T4 16 GB).
 
 It is part of the MSc thesis *"Multi-Agent System for Retrieving Missing Geospatial Data"*.
 Agent-001 and Agent-002 turn natural-language questions into `QueryParams` JSON in
-`pipeline/query_parser.py::parse_query()`. With `agent_side/llm_client.py`, the same step can run on
-three models so they can be compared:
+`pipeline/query_parser.py::parse_query()`. With `agent_side/llm_client.py`, that step runs on one of
+the two models served here:
 
 | Configuration | `LLM_PROVIDER` | Where it runs |
 |---|---|---|
-| GPT-4o mini | `openai` | OpenAI API |
 | Qwen3-8B (base) | `qwen8B` | this service |
-| Qwen3-8B + LoRA adapter | `lora-finetune` | this service |
+| Qwen3-8B + LoRA adapter | `lora-finetune` (default) | this service |
 
 ## Endpoints
 
@@ -49,7 +48,7 @@ Response (`latency_ms` = generation time on the server, without time spent waiti
  pipeline/query_parser.py                     ┌──────────────────────────────────────────────┐
    parse_query()                              │ docker container "openweight-llm"            │
      └─ call_llm(messages)                    │  uvicorn :8000  (host port 80)               │
-          LLM_PROVIDER=openai ──► OpenAI API  │  app/main.py   X-API-Key check, routes       │
+                                              │  app/main.py   X-API-Key check, routes       │
           LLM_PROVIDER=qwen8B ───── HTTP ───► │  app/llm.py                                  │
           LLM_PROVIDER=lora-finetune ───────► │    "qwen8B"        Llama(Q4_K_M)       + Lock│
                                               │    "lora-finetune" Llama(Q4_K_M, LoRA) + Lock│
@@ -95,7 +94,7 @@ openweight-llm/
 │   ├── qwen3_chat_template.jinja   Qwen3 chat template saved by notebook 02, to check build_prompt()
 │   ├── conftest.py            test settings + TestClient fixture
 │   ├── test_api.py            routes, auth, validation, prompt format
-│   └── test_llm_client.py     call_llm() for all three providers
+│   └── test_llm_client.py     call_llm() for both models
 ├── .github/workflows/ci.yml   on every push: tests, shell script syntax, compose file check
 ├── adapter/                   your PEFT adapter (git-ignored): adapter_config.json + adapter_model.safetensors
 ├── models/                    created by prepare_model.sh on EC2 (git-ignored)
@@ -124,7 +123,7 @@ pytest -v
 ```
 
 They check both endpoints with and without a trailing slash, 401 for a missing or wrong key, 422 for
-an invalid body, 400 for a prompt that is too long, `/health`, `call_llm()` for all three providers,
+an invalid body, 400 for a prompt that is too long, `/health`, `call_llm()` for both models,
 and that `build_prompt()` gives exactly the same text as the Qwen3 chat template used in training.
 
 ## Cost
@@ -228,11 +227,11 @@ curl -i -X POST $HOST/openWeightllm/qwen8B -H "Content-Type: application/json" \
 ## Connecting the agents
 
 1. Copy `agent_side/llm_client.py` into `Agent-001/pipeline/` and `Agent-002/pipeline/`.
-   It needs `httpx`, which the `openai` package already installs.
+   It needs `httpx` (`pip install httpx`; already installed if the agent has the `openai` package).
 2. Add to each agent's `.env`:
 
    ```
-   LLM_PROVIDER=lora-finetune        # openai | qwen8B | lora-finetune
+   LLM_PROVIDER=lora-finetune        # qwen8B | lora-finetune
    QWEN_HOST=http://<ec2-ip>
    QWEN_API_KEY=<API_KEY from the server's .env>
    ```
@@ -246,12 +245,11 @@ curl -i -X POST $HOST/openWeightllm/qwen8B -H "Content-Type: application/json" \
    raw_json = llm_answer["content"]
    ```
 
-   The rest of `parse_query()` stays the same. `call_llm()` returns the same shape for all three
-   providers: `model`, `content`, `prompt_tokens`, `completion_tokens`, `total_tokens` and
-   `latency_ms` (the round trip measured in the agent, so it means the same thing for GPT-4o mini
-   and Qwen). Pass these to `evaluation/metrics_logger.py` for the comparison.
+   The rest of `parse_query()` stays the same. `call_llm()` returns the same shape for both models:
+   `model`, `content`, `prompt_tokens`, `completion_tokens`, `total_tokens` and `latency_ms` (the
+   round trip measured in the agent). Pass these to `evaluation/metrics_logger.py` for the comparison.
 
-`LLM_PROVIDER` is read on every call, so an evaluation script can loop over the three providers by
+`LLM_PROVIDER` is read on every call, so an evaluation script can switch between the two models by
 setting `os.environ["LLM_PROVIDER"]` between runs.
 
 The public IP changes every time the instance is stopped and started; update `QWEN_HOST` (or attach

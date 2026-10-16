@@ -1,7 +1,4 @@
-"""agent_side/llm_client.py: the same call_llm() result for openai, qwen8B and lora-finetune."""
-
-import sys
-from types import SimpleNamespace
+"""agent_side/llm_client.py: call_llm() for qwen8B and lora-finetune."""
 
 import httpx
 import pytest
@@ -12,18 +9,24 @@ from tests.conftest import PARSER_MESSAGES
 RESULT_KEYS = {"model", "content", "prompt_tokens", "completion_tokens", "total_tokens", "latency_ms"}
 
 
-@pytest.mark.parametrize("provider", ["qwen8B", "lora-finetune"])
-def test_qwen_providers_call_the_server(client, monkeypatch, provider):
-    sent_requests = []
+@pytest.fixture
+def sent_requests(client, monkeypatch):
+    """Return the list of requests call_llm() sends, with httpx.post routed to the TestClient."""
+    requests_seen = []
 
     def post_to_test_client(url, headers, json, timeout):
-        sent_requests.append({"url": url, "headers": headers, "timeout": timeout})
+        requests_seen.append({"url": url, "headers": headers, "timeout": timeout})
         return client.post(url.removeprefix("http://ec2.test"), headers=headers, json=json)
 
     monkeypatch.setattr(httpx, "post", post_to_test_client)
-    monkeypatch.setenv("LLM_PROVIDER", provider)
     monkeypatch.setenv("QWEN_HOST", "http://ec2.test/")
     monkeypatch.setenv("QWEN_API_KEY", "test-key")
+    return requests_seen
+
+
+@pytest.mark.parametrize("provider", ["qwen8B", "lora-finetune"])
+def test_call_llm(sent_requests, monkeypatch, provider):
+    monkeypatch.setenv("LLM_PROVIDER", provider)
 
     answer = llm_client.call_llm(PARSER_MESSAGES)
 
@@ -34,25 +37,13 @@ def test_qwen_providers_call_the_server(client, monkeypatch, provider):
     assert sent_requests[0]["timeout"] == 300
 
 
-def test_openai_provider(monkeypatch):
-    usage = SimpleNamespace(prompt_tokens=20, completion_tokens=5, total_tokens=25)
-    completion = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='{"a": 1}'))],
-                                 usage=usage)
-    create = lambda **request: completion
-    fake_openai = SimpleNamespace(OpenAI=lambda: SimpleNamespace(chat=SimpleNamespace(
-        completions=SimpleNamespace(create=create))))
-    monkeypatch.setitem(sys.modules, "openai", fake_openai)
-    monkeypatch.setenv("LLM_PROVIDER", "openai")
-
-    answer = llm_client.call_llm(PARSER_MESSAGES)
-
-    assert set(answer) == RESULT_KEYS
-    assert answer["model"] == "gpt-4o-mini"
-    assert answer["content"] == '{"a": 1}'
-    assert answer["total_tokens"] == 25
+def test_default_provider_is_lora_finetune(sent_requests, monkeypatch):
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    assert llm_client.call_llm(PARSER_MESSAGES)["model"] == "lora-finetune"
 
 
-def test_unknown_provider(monkeypatch):
-    monkeypatch.setenv("LLM_PROVIDER", "gpt5")
+@pytest.mark.parametrize("provider", ["openai", "gpt5"])
+def test_unknown_provider(monkeypatch, provider):
+    monkeypatch.setenv("LLM_PROVIDER", provider)
     with pytest.raises(ValueError):
         llm_client.call_llm(PARSER_MESSAGES)
