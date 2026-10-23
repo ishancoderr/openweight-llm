@@ -1,6 +1,5 @@
-# openweight-llm: model files, the private adapter and secrets stay out of git
+# openweight-llm: model files and secrets stay out of git (the adapter in adapter/ is stored with Git LFS)
 models/
-adapter/
 .env
 __pycache__/
 venv/

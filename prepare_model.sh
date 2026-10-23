@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run once on EC2 from the project folder, after copying the PEFT adapter into ./adapter:
+# Run once on EC2 from the project folder (the PEFT adapter in ./adapter comes with the clone via Git LFS):
 #     ./prepare_model.sh
 # 1. downloads the 4-bit GGUF base model into ./models
 # 2. converts ./adapter (adapter_config.json + adapter_model.safetensors) to ./models/adapter.gguf
@@ -23,11 +23,16 @@ echo "== 1/3 Adapter"
 for adapter_file in adapter_config.json adapter_model.safetensors; do
     if [ ! -f "$ADAPTER_DIR/$adapter_file" ]; then
         echo "ERROR: $ADAPTER_DIR/$adapter_file not found." >&2
-        echo "Copy your PEFT adapter folder to $ADAPTER_DIR first, e.g. from your laptop:" >&2
-        echo "  scp -i key.pem -r ./adapter ubuntu@<ec2-ip>:~/openweight-llm/adapter" >&2
+        echo "It is stored in the repo with Git LFS: run 'git lfs install && git lfs pull' in $PROJECT_DIR." >&2
         exit 1
     fi
 done
+# Without git-lfs, a clone contains a ~130-byte text pointer instead of the real 167 MB weights.
+if [ "$(wc -c < "$ADAPTER_DIR/adapter_model.safetensors")" -lt 1000000 ]; then
+    echo "ERROR: $ADAPTER_DIR/adapter_model.safetensors is a Git LFS pointer, not the weights." >&2
+    echo "Run: sudo apt-get install -y git-lfs && git lfs install && git lfs pull" >&2
+    exit 1
+fi
 ADAPTER_BASE="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("base_model_name_or_path", "(not set)"))' \
     "$ADAPTER_DIR/adapter_config.json")"
 echo "Adapter was trained on : $ADAPTER_BASE"

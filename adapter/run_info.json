@@ -1,0 +1,8 @@
+{
+ "data_version": "v3",
+ "train_examples": 1016,
+ "val_examples": 103,
+ "epochs": 2,
+ "best_checkpoint": "/content/drive/MyDrive/kqml_finetune/checkpoints/qwen3-8b-v3/checkpoint-254",
+ "best_eval_loss": 0.0017688319785520434
+}

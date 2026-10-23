@@ -1,8 +1,20 @@
 #!/usr/bin/env bash
 # Run once on a fresh g4dn.xlarge (Ubuntu 22.04 Deep Learning Base GPU AMI): ./setup_ec2.sh
-# Installs Docker and the NVIDIA container toolkit only if they are missing, then checks
-# that a container can see the T4.
+# Installs git-lfs, Docker and the NVIDIA container toolkit only if they are missing, downloads the
+# adapter weights stored with Git LFS, then checks that a container can see the T4.
 set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+echo "== 0/4 Git LFS: adapter weights"
+if ! git lfs version >/dev/null 2>&1; then
+    sudo apt-get update
+    sudo apt-get install -y git-lfs
+fi
+git lfs install
+# A clone made before git-lfs was installed only has small pointer files; this replaces them.
+git -C "$PROJECT_DIR" lfs pull
+ls -lh "$PROJECT_DIR/adapter/adapter_model.safetensors"
 
 echo "== 1/4 NVIDIA driver"
 if ! command -v nvidia-smi >/dev/null 2>&1; then

@@ -96,7 +96,8 @@ openweight-llm/
 │   ├── test_api.py            routes, auth, validation, prompt format
 │   └── test_llm_client.py     call_llm() for both models
 ├── .github/workflows/ci.yml   on every push: tests, shell script syntax, compose file check
-├── adapter/                   your PEFT adapter (git-ignored): adapter_config.json + adapter_model.safetensors
+├── adapter/                   PEFT adapter from notebook 02 (MyDrive/kqml_finetune/adapters/qwen3-8b-v3/);
+│                              adapter_model.safetensors (167 MB) is stored with Git LFS
 ├── models/                    created by prepare_model.sh on EC2 (git-ignored)
 │   ├── Qwen3-8B-Q4_K_M.gguf
 │   └── adapter.gguf
@@ -170,22 +171,22 @@ The g4dn's local NVMe disk is wiped on every stop; keep everything on the EBS ro
 # 1. On your laptop: connect
 ssh -i key.pem ubuntu@<ec2-ip>
 
-# 2. On EC2: get the code (private repo: use a GitHub personal access token as the password)
+# 2. On EC2: get the code (public repo, no login needed)
 git clone https://github.com/ishancoderr/openweight-llm.git
 cd openweight-llm
 chmod +x setup_ec2.sh prepare_model.sh
 
-# 3. Docker + NVIDIA container toolkit (skips whatever the AMI already has), then log in again
+# 3. git-lfs (downloads the 167 MB adapter weights), Docker + NVIDIA container toolkit
+#    (skips whatever the AMI already has), then log in again
 ./setup_ec2.sh
 exit
 ssh -i key.pem ubuntu@<ec2-ip>
 cd openweight-llm
 
-# 4. On your laptop: copy the PEFT adapter folder to the instance. This is the folder notebook 02
-#    saved to MyDrive/kqml_finetune/adapters/qwen3-8b-v3/, downloaded into openweight-llm/adapter/
-scp -i key.pem -r ./adapter ubuntu@<ec2-ip>:~/openweight-llm/
+# 4. Check the adapter arrived as real weights (167M), not a small Git LFS pointer file
+ls -lh adapter/adapter_model.safetensors
 
-# 5. On EC2: download the base GGUF (~5 GB) and convert the adapter to models/adapter.gguf
+# 5. Download the base GGUF (~5 GB) and convert the adapter to models/adapter.gguf
 ./prepare_model.sh
 
 # 6. Settings: set a long random API key
@@ -194,6 +195,7 @@ sed -i "s/^API_KEY=.*/API_KEY=$(openssl rand -hex 32)/" .env
 grep API_KEY .env          # give this value to the agents as QWEN_API_KEY
 
 # 7. Build and start (the first build compiles llama.cpp: ~10-20 min)
+df -h /                    # "Avail" should be at least 25 GB (CUDA image ~12 GB + build); else grow the volume
 docker compose up -d --build
 docker compose logs -f     # wait for "Application startup complete", then Ctrl+C
 docker compose ps          # STATUS should become "healthy"
@@ -267,9 +269,8 @@ nvidia-smi                           # GPU memory: ~12 GiB used when both models
 # update the code
 git pull && docker compose up -d --build
 
-# new adapter version
-scp -i key.pem -r ./adapter ubuntu@<ec2-ip>:~/openweight-llm/   # from your laptop
-./prepare_model.sh && docker compose restart                    # on EC2
+# new adapter version: replace adapter/ on your laptop, commit and push (Git LFS stores the weights), then on EC2
+git pull && ./prepare_model.sh && docker compose restart
 
 # after an instance stop/start the container comes back by itself (restart: unless-stopped)
 ```

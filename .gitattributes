@@ -2,3 +2,5 @@
 *.sh text eol=lf
 # The chat template fixture must stay byte-identical to the one used in training
 *.jinja text eol=lf
+adapter/*.safetensors filter=lfs diff=lfs merge=lfs -text
+adapter/*.bin filter=lfs diff=lfs merge=lfs -text
