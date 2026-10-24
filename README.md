@@ -107,6 +107,7 @@ openweight-llm/
 ├── requirements-dev.txt       test dependencies (pinned)
 ├── pytest.ini
 ├── .env.example               every setting, with comments
+├── check_deployment.py        from your laptop: health, API key, and both models on validation questions
 ├── setup_ec2.sh               once per instance: Docker + NVIDIA container toolkit
 └── prepare_model.sh           once per adapter: download base GGUF, convert adapter to GGUF
 ```
@@ -131,11 +132,11 @@ and that `build_prompt()` gives exactly the same text as the Qwen3 chat template
 
 | Item | Price (eu-central-1, Frankfurt) |
 |---|---|
-| g4dn.xlarge on-demand, running | ≈ **$0.66/h** (≈ €0.60/h, under the €1/h budget) |
+| g4dn.xlarge on-demand, running | **$0.526/h** (console price, Oct 2026; ≈ €0.45/h, under the €1/h budget) |
 | Public IPv4 address, running | $0.005/h |
-| 50 GB gp3 root volume | ≈ $4.80/month, **also while the instance is stopped** |
+| 80 GB gp3 root volume | ≈ $7.60/month, **also while the instance is stopped** |
 
-Left running 24/7 the instance costs ≈ $480/month, so:
+Left running 24/7 the instance costs ≈ $380/month, so:
 
 - **Stop the instance whenever you are not running experiments** (`aws ec2 stop-instances --instance-ids <id>`
   or the console). A stopped instance only costs the EBS volume. Terminate it when the thesis is done.
@@ -157,11 +158,11 @@ New AWS accounts usually have a quota of **0 vCPUs** for GPU instances.
 | Setting | Value |
 |---|---|
 | Region | eu-central-1 (Frankfurt) |
-| AMI | **Deep Learning Base OSS Nvidia Driver GPU AMI (Ubuntu 22.04)** |
+| AMI | **Deep Learning Base AMI with Single CUDA (Ubuntu 24.04)** (the Ubuntu 22.04 Deep Learning Base GPU AMI works too) |
 | Instance type | g4dn.xlarge |
 | Key pair | create one, keep the `.pem` |
-| Security group | inbound **22** (SSH) from *My IP*; inbound **80** (HTTP) from the agents' IP(s) |
-| Storage | **50 GB gp3** root volume (if the AMI's snapshot needs more, use the minimum the console shows) |
+| Security group | `openweight-llm-sg`: **22** (SSH) from *My IP*; **80** (HTTP) from *My IP* (testing) and from the agents instance's security group |
+| Storage | **80 GB gp3** root volume (the 35 GB default is too small for the CUDA image + models) |
 
 The g4dn's local NVMe disk is wiped on every stop; keep everything on the EBS root volume.
 
@@ -204,6 +205,19 @@ docker compose ps          # STATUS should become "healthy"
 `prepare_model.sh` can be pointed at another GGUF file through environment variables, e.g.
 `BASE_FILE=Qwen3-8B-Q5_K_M.gguf ./prepare_model.sh` (then set `BASE_GGUF` in `.env` to match).
 `BASE_REPO`, `BASE_FILE`, `BASE_HF_ID` and `LLAMA_CPP_REF` can all be overridden this way.
+
+## Checking the deployment
+
+From your laptop (needs only Python, reads the validation file of the `kqml-geo-qwen3-qlora` repo
+next to this one):
+
+```bash
+python check_deployment.py --host http://<ec2-ip> --api-key <API_KEY>
+```
+
+It checks `/health`, that a wrong key gets 401 and yours gets 200, then sends 2 validation questions
+per task (classify, extract, sql) to both models and scores them like notebooks 01/03. Use
+`--per-task 5` for more. If both models always give the same answer, the adapter is not active.
 
 ## Testing with curl
 
@@ -254,8 +268,14 @@ curl -i -X POST $HOST/openWeightllm/qwen8B -H "Content-Type: application/json" \
 `LLM_PROVIDER` is read on every call, so an evaluation script can switch between the two models by
 setting `os.environ["LLM_PROVIDER"]` between runs.
 
-The public IP changes every time the instance is stopped and started; update `QWEN_HOST` (or attach
-an Elastic IP, which costs $0.005/h while the instance is stopped).
+**Agents on another EC2 instance (same region and VPC):** use the LLM server's **private** IP,
+`QWEN_HOST=http://172.31.x.x` (EC2 → Instances → *Private IPv4 addresses*). It stays the same across
+stop/start, and the traffic never leaves AWS (free within the same availability zone). In
+`openweight-llm-sg`, allow HTTP (80) with the agents instance's **security group** as the source
+(Source type *Custom* → `sg-…`), not an IP address.
+
+**Agents on your laptop:** use the public IP. It changes every time the instance is stopped and
+started; update `QWEN_HOST` (or attach an Elastic IP, which costs $0.005/h while the instance is stopped).
 
 ## Operations
 

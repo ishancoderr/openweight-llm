@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run once on a fresh g4dn.xlarge (Ubuntu 22.04 Deep Learning Base GPU AMI): ./setup_ec2.sh
+# Run once on a fresh g4dn.xlarge (Deep Learning Base GPU AMI, Ubuntu 24.04 or 22.04): ./setup_ec2.sh
 # Installs git-lfs, Docker and the NVIDIA container toolkit only if they are missing, downloads the
 # adapter weights stored with Git LFS, then checks that a container can see the T4.
 set -euo pipefail
@@ -18,7 +18,7 @@ ls -lh "$PROJECT_DIR/adapter/adapter_model.safetensors"
 
 echo "== 1/4 NVIDIA driver"
 if ! command -v nvidia-smi >/dev/null 2>&1; then
-    echo "ERROR: nvidia-smi not found. Launch the instance from the Deep Learning Base GPU AMI (Ubuntu 22.04)." >&2
+    echo "ERROR: nvidia-smi not found. Launch the instance from a Deep Learning Base GPU AMI (Ubuntu 24.04 or 22.04)." >&2
     exit 1
 fi
 nvidia-smi

@@ -11,7 +11,7 @@ BASE_FILE="${BASE_FILE:-Qwen3-8B-Q4_K_M.gguf}"
 BASE_HF_ID="${BASE_HF_ID:-Qwen/Qwen3-8B}"
 # Same llama.cpp version that llama-cpp-python 0.3.36 is built from, so the adapter format matches.
 LLAMA_CPP_REF="${LLAMA_CPP_REF:-b11312}"
-HF_HUB_VERSION="2.1.1"
+HF_HUB_VERSION="2.1.1"  # for the base model download (step 2)
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ADAPTER_DIR="$PROJECT_DIR/adapter"
@@ -73,8 +73,9 @@ docker run --rm \
             "https://github.com/ggml-org/llama.cpp/archive/refs/tags/$LLAMA_CPP_REF.tar.gz"
         mkdir llama.cpp && tar -xzf llama.cpp.tar.gz -C llama.cpp --strip-components=1
         # The requirements file adds the CPU-only PyTorch index, so no CUDA wheels are pulled in.
+        # Its transformers 4.57.6 needs huggingface_hub < 1.0 (0.34+ still has the hf CLI), not HF_HUB_VERSION.
         pip install --quiet --root-user-action=ignore \
-            -r llama.cpp/requirements/requirements-convert_lora_to_gguf.txt "huggingface_hub=='"$HF_HUB_VERSION"'"
+            -r llama.cpp/requirements/requirements-convert_lora_to_gguf.txt "huggingface_hub>=0.34,<1.0"
 
         # Only the config and tokenizer of the base model are needed, not its 16 GB of weights.
         hf download "$BASE_HF_ID" config.json generation_config.json tokenizer.json tokenizer_config.json \
